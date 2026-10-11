@@ -9,7 +9,7 @@ from telegram.ext import (
 )
  
 from config import BOT_TOKEN, ADMINS
-from handlers.start import start_command, help_command, menu_callback
+from handlers.start import start_command, help_command, menu_callback, photo_id_handler
 from handlers.status import status_command, track_group, bot_membership
 from handlers.search import search_message, page_callback, download_callback, noop_callback, play_command
 from handlers.save import channel_save, pm_save
@@ -77,6 +77,9 @@ def build_application():
     app.add_handler(CallbackQueryHandler(deleteall_callback, pattern=r"^xa\|"))
     app.add_handler(CallbackQueryHandler(noop_callback, pattern=r"^noop$"))
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^(help|home)$"))
+ 
+    # Owner sends a photo in private -> bot replies with its file_id (for START_PHOTO)
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.PHOTO, photo_id_handler))
  
     # Saving songs
     app.add_handler(MessageHandler(
