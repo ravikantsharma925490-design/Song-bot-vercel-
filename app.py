@@ -1,31 +1,31 @@
 import os
-
+ 
 from fastapi import FastAPI, Request, Header, HTTPException
 from telegram import Update
-
+ 
 import database as db
 from main import build_application, _post_init
-
+ 
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
-
+ 
 db.init_db()
 tg = build_application()
 app = FastAPI()
 _ready = False
-
-
+ 
+ 
 async def _ensure_ready():
     global _ready
     if not _ready:
         await tg.initialize()
         _ready = True
-
-
+ 
+ 
 @app.get("/")
 def home():
     return {"status": "ok"}
-
-
+ 
+ 
 @app.post("/api/webhook")
 async def webhook(
     request: Request,
@@ -37,11 +37,11 @@ async def webhook(
     update = Update.de_json(await request.json(), tg.bot)
     await tg.process_update(update)
     return {"ok": True}
-
-
+ 
+ 
 @app.get("/api/setup")
 async def setup(request: Request, key: str = ""):
-    """Ek baar browser mein kholein: webhook set + commands set."""
+    """Open once in a browser: sets the webhook and commands."""
     if not WEBHOOK_SECRET or key != WEBHOOK_SECRET:
         raise HTTPException(status_code=403)
     await _ensure_ready()
@@ -54,3 +54,4 @@ async def setup(request: Request, key: str = ""):
     )
     await _post_init(tg)
     return {"webhook": url, "commands": "set"}
+ 
