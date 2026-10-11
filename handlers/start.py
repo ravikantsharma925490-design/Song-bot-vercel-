@@ -11,15 +11,12 @@ from config import UPDATES_URL, SUPPORT_URL
 from handlers.common import send_song, fsub_gate
  
 WELCOME = (
-    "🎵 <b>Welcome to MyTunes Bot, {name}!</b>\n\n"
-    "Your personal music bot — find any song in seconds and get it right in your chat.\n\n"
-    "✨ <b>Features</b>\n"
-    "- ⚡ <b>Instant Search:</b> Type a song name and get the audio in seconds\n"
-    "- 🎧 <b>Clean Audio:</b> High-quality song files, ready to play\n"
-    "- 👥 <b>Works in Groups:</b> Use /play song name and the song is sent right in your group\n"
-    "- 💯 <b>100% Free:</b> No hidden charges, no limits\n\n"
-    "📥 <b>How to use</b>\n"
-    "Just send a song name, for example <code>Kesariya</code>, then tap the result you want."
+    "👋 Hello {name}! Welcome to MyTunes Bot 🎧\n\n"
+    "I can find any song for you and send it directly as an MP3 file.\n\n"
+    "📌 Use the command below to download:\n"
+    "👉 /download [Song name or Link]\n\n"
+    "(Example: /download Tu Hai Kahan)\n\n"
+    "If you face any problem, type /help!"
 )
  
 HELP = (
