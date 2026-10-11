@@ -1,12 +1,12 @@
 """Small helper functions (they work without Telegram)."""
-
+ 
 import os
 import re
 import unicodedata
-
+ 
 AUDIO_EXT = (".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma", ".amr")
-
-
+ 
+ 
 def normalize(text):
     """Lowercases and strips symbols, keeping only words.
     Hindi vowel signs (ि, ु, ा ...) are kept; English accents (ā -> a) are removed."""
@@ -22,38 +22,38 @@ def normalize(text):
         else:
             out.append(" ")
     return re.sub(r"\s+", " ", "".join(out)).strip()
-
-
+ 
+ 
 def human_size(n):
     n = float(n or 0)
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
             return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
         n /= 1024
-
-
+ 
+ 
 def clip(text, limit):
     text = text or ""
     return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
+ 
+ 
 def clean_title(name):
     """Removes the file extension and turns underscores into spaces for a clean title."""
     name = re.sub(r"\.(mp3|m4a|flac|wav|ogg|opus|aac|wma|amr)$", "", name or "", flags=re.I)
     return re.sub(r"\s+", " ", name.replace("_", " ")).strip()
-
-
+ 
+ 
 def pick_best(items, query):
     """Picks the best song from several results: exact name match > starts-with match > shorter name."""
     nq = normalize(query)
-
+ 
     def key(s):
         n = normalize(s.get("name"))
         return (0 if n == nq else 1 if n.startswith(nq) else 2, len(n))
-
+ 
     return min(items, key=key) if items else None
-
-
+ 
+ 
 def play_query(text, bot_username):
     """Parses '@Bot /play kesariya' or '/play@Bot kesariya' or '/play kesariya @Bot' into (is_mentioned, song_name).
     Returns None if the text doesn't start with /play or '@Bot /play'."""
@@ -71,17 +71,17 @@ def play_query(text, bot_username):
         mentioned = True
         rest = re.sub(rf"(?i)@{re.escape(bot)}\b", " ", rest)
     return (mentioned, re.sub(r"\s+", " ", rest).strip())
-
-
+ 
+ 
 # ---------------- /status helpers ----------------
-
+ 
 def format_uptime(seconds):
     seconds = int(max(seconds, 0))
     d, r = divmod(seconds, 86400)
     h, r = divmod(r, 3600)
     return f"{d}d {h}h {r // 60}m"
-
-
+ 
+ 
 def process_ram():
     """(memory used by this process, total memory) in bytes, or (None, None) if unavailable."""
     rss = total = None
@@ -97,16 +97,16 @@ def process_ram():
     except Exception:
         pass
     return rss, total
-
-
+ 
+ 
 def cpu_load_percent():
     """1-minute load average as a percentage of CPU cores, or None if unavailable."""
     try:
         return os.getloadavg()[0] / (os.cpu_count() or 1) * 100
     except Exception:
         return None
-
-
+ 
+ 
 def status_text(users, groups, files, used, limit, uptime, rss, total, cpu):
     """Builds the /status message. Any value that is None is shown as N/A."""
     if used is None:
@@ -138,3 +138,4 @@ def status_text(users, groups, files, used, limit, uptime, rss, total, cpu):
         "│\n"
         "╰─────────────────────⍟"
     )
+ 
