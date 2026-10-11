@@ -1,23 +1,23 @@
 """/status (owner only) + group tracking so the group count is correct."""
-
+ 
 import asyncio
 import logging
 import time
-
+ 
 from telegram import Update
 from telegram.ext import ContextTypes
-
+ 
 import database as db
 from config import ADMINS, STORAGE_LIMIT_MB
 from utils import status_text, process_ram, cpu_load_percent
-
+ 
 logger = logging.getLogger(__name__)
-
+ 
 # Time this server instance started. On Vercel the instance restarts often,
 # so uptime means "time since the current instance started".
 _STARTED = time.time()
-
-
+ 
+ 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None or user.id not in ADMINS:
@@ -32,8 +32,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.time() - _STARTED, rss, total, cpu_load_percent(),
     )
     await update.effective_message.reply_text(text)
-
-
+ 
+ 
 async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Runs on every group message (does not block other handlers): remembers the group."""
     chat = update.effective_chat
@@ -43,8 +43,8 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.to_thread(db.track_chat, chat.id, chat.title)
     except Exception as e:
         logger.warning("track_group failed: %s", e)
-
-
+ 
+ 
 async def bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """When the bot is added to or removed from a group."""
     cmu = update.my_chat_member
@@ -57,3 +57,4 @@ async def bot_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.to_thread(db.remove_chat, cmu.chat.id)
     except Exception as e:
         logger.warning("bot_membership failed: %s", e)
+ 
