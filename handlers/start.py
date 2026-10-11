@@ -1,27 +1,65 @@
-"""/start (also handles song deep links) and /help."""
+"""/start (also handles song deep links), /help, and the Help / Back buttons."""
  
 import asyncio
+import html
  
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
  
 import database as db
+from config import UPDATES_URL, SUPPORT_URL
 from handlers.common import send_song, fsub_gate
  
 WELCOME = (
-    "🎶 <b>Hello {name}!</b>\n\n"
-    "I'm a song bot. Just type a song name and I'll find it and send it to you.\n\n"
-    "Example: <code>kesariya</code>\n\n"
-    "Add me to a group and type: <code>/play@{bot} song name</code> — the song will be sent straight to the group."
+    "🎵 <b>Welcome to MyTunes Bot, {name}!</b>\n\n"
+    "Your personal music bot — find any song in seconds and get it right in your chat.\n\n"
+    "✨ <b>Features</b>\n"
+    "- ⚡ <b>Instant Search:</b> Type a song name and get the audio in seconds\n"
+    "- 🎧 <b>Clean Audio:</b> High-quality song files, ready to play\n"
+    "- 👥 <b>Works in Groups:</b> Use /play song name and the song is sent right in your group\n"
+    "- 💯 <b>100% Free:</b> No hidden charges, no limits\n\n"
+    "📥 <b>How to use</b>\n"
+    "Just send a song name, for example <code>Kesariya</code>, then tap the result you want."
 )
  
 HELP = (
-    "ℹ️ <b>How to use</b>\n\n"
+    "ℹ️ <b>Help &amp; Commands</b>\n\n"
     "1. In private chat: type a song name, then tap a button.\n"
     "2. In a group: type <code>/play@BotName song name</code> and the song will be sent in the group.\n"
     "3. In a group, typing just a song name also shows buttons; tapping one sends the song in the group.\n\n"
+    "<b>Commands</b>\n"
+    "/start — Start the bot\n"
+    "/help — How to use\n"
+    "/play song name — Play a song\n\n"
     "Tip: use fewer words, like <code>arijit tum hi ho</code>."
 )
+ 
+ 
+def _btn(text, url=None, cb=None, style=None):
+    """Button with optional color: style = 'primary' (blue), 'success' (green), 'danger' (red)."""
+    return InlineKeyboardButton(
+        text, url=url, callback_data=cb,
+        api_kwargs={"style": style} if style else None,
+    )
+ 
+ 
+def home_markup(bot):
+    rows = [
+        [_btn("➕ Add Me To Your Group", url=f"https://t.me/{bot.username}?startgroup=true", style="success")],
+        [_btn("ℹ️ Help & Commands", cb="help", style="primary")],
+    ]
+    last = []
+    if UPDATES_URL:
+        last.append(_btn("📢 Updates", url=UPDATES_URL, style="danger"))
+    if SUPPORT_URL:
+        last.append(_btn("💬 Support", url=SUPPORT_URL, style="success"))
+    if last:
+        rows.append(last)
+    return InlineKeyboardMarkup(rows)
+ 
+ 
+def welcome_text(user):
+    return WELCOME.format(name=html.escape(user.first_name or "friend"))
  
  
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -50,12 +88,25 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("⚠️ Couldn't send the song. It may have been removed from the channel.")
         return
  
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("➕ Add me to a group", url=f"https://t.me/{context.bot.username}?startgroup=true")]]
-    )
-    await msg.reply_html(WELCOME.format(name=user.first_name or "friend", bot=context.bot.username), reply_markup=kb)
+    await msg.reply_html(welcome_text(user), reply_markup=home_markup(context.bot))
  
  
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_html(HELP)
+ 
+ 
+async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """'Help & Commands' button shows help; 'Back' returns to the welcome message."""
+    q = update.callback_query
+    await q.answer()
+    if q.data == "help":
+        text = HELP
+        kb = InlineKeyboardMarkup([[_btn("⬅️ Back", cb="home", style="primary")]])
+    else:
+        text = welcome_text(update.effective_user)
+        kb = home_markup(context.bot)
+    try:
+        await q.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        pass  # e.g. message not modified
  
