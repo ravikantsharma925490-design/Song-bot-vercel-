@@ -8,7 +8,7 @@ from telegram.ext import (
 )
  
 from config import BOT_TOKEN, ADMINS
-from handlers.start import start_command, help_command
+from handlers.start import start_command, help_command, menu_callback
 from handlers.search import search_message, page_callback, download_callback, noop_callback, play_command
 from handlers.save import channel_save, pm_save
 from handlers.admin import (
@@ -66,6 +66,7 @@ def build_application():
     app.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^x\|"))
     app.add_handler(CallbackQueryHandler(deleteall_callback, pattern=r"^xa\|"))
     app.add_handler(CallbackQueryHandler(noop_callback, pattern=r"^noop$"))
+    app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^(help|home)$"))
  
     # Saving songs
     app.add_handler(MessageHandler(
