@@ -1,14 +1,35 @@
-"""/start (also handles song deep links), /help, and the Help / Back buttons."""
+"""/start (also handles song deep links, shows the start photo), /help, and the Help / Back buttons."""
  
 import asyncio
 import html
+import logging
+import os
  
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
  
 import database as db
-from config import UPDATES_URL, SUPPORT_URL
+from config import ADMINS, UPDATES_URL, SUPPORT_URL, START_PHOTO
 from handlers.common import send_song, fsub_gate
+ 
+logger = logging.getLogger(__name__)
+ 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PHOTO_FILES = ("start.jpg", "start.jpeg", "start.png", "start.webp")
+_PHOTO_DIRS = ("", "image", "images")  # top level, or an "image" / "images" folder
+ 
+ 
+def _start_photo():
+    """START_PHOTO (file_id or link) if set, else a start.jpg/png file placed in the repo (top level or image/ folder), else None."""
+    if START_PHOTO:
+        return START_PHOTO
+    for folder in _PHOTO_DIRS:
+        for name in _PHOTO_FILES:
+            path = os.path.join(_ROOT, folder, name)
+            if os.path.isfile(path):
+                with open(path, "rb") as f:
+                    return f.read()
+    return None
  
 WELCOME = (
     "👋 Hello {name}! Welcome to MyTunes Bot 🎧\n\n"
@@ -85,7 +106,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("⚠️ Couldn't send the song. It may have been removed from the channel.")
         return
  
-    await msg.reply_html(welcome_text(user), reply_markup=home_markup(context.bot))
+    text, kb = welcome_text(user), home_markup(context.bot)
+    photo = _start_photo()
+    if photo:
+        try:
+            await msg.reply_photo(photo, caption=text, parse_mode="HTML", reply_markup=kb)
+            return
+        except Exception as e:
+            logger.warning("start photo failed, sending text only: %s", e)
+    await msg.reply_html(text, reply_markup=kb)
  
  
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,7 +132,24 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = welcome_text(update.effective_user)
         kb = home_markup(context.bot)
     try:
-        await q.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+        if q.message and q.message.photo:
+            # the welcome message has a photo, so its text is the caption
+            await q.edit_message_caption(caption=text, parse_mode="HTML", reply_markup=kb)
+        else:
+            await q.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
     except Exception:
         pass  # e.g. message not modified
+ 
+ 
+async def photo_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner only: send a photo to the bot in private and it replies with the photo's file_id."""
+    msg, user = update.effective_message, update.effective_user
+    if not msg or not user or user.id not in ADMINS or not msg.photo:
+        return
+    file_id = msg.photo[-1].file_id
+    await msg.reply_html(
+        "🖼 <b>Photo file_id:</b>\n"
+        f"<code>{file_id}</code>\n\n"
+        "Copy it and add it in Vercel as <code>START_PHOTO</code>, then redeploy."
+    )
  
