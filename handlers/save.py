@@ -1,24 +1,24 @@
 """
-Songs ko database mein save karna:
- 1) Channel mein naya audio/file aate hi (bot channel mein admin ho)
- 2) Admin bot ko PM mein audio bheje ya channel se songs FORWARD kare (purane songs ke liye)
+Saving songs to the database:
+ 1) Automatically when a new audio/file arrives in a channel (bot must be a channel admin)
+ 2) When an admin sends audio to the bot in PM or FORWARDS songs from a channel (for old songs)
 """
-
+ 
 import asyncio
 import logging
-
+ 
 from telegram import Update
 from telegram.ext import ContextTypes
-
+ 
 import database as db
 from config import ADMINS, CHANNELS
 from utils import AUDIO_EXT, normalize, clean_title
-
+ 
 logger = logging.getLogger(__name__)
-
-
+ 
+ 
 def _extract(msg):
-    """Message se song ki info nikalta hai. Song na ho to None."""
+    """Extracts song info from a message. Returns None if it isn't a song."""
     caption = (msg.caption or "").strip()
     if msg.audio:
         a = msg.audio
@@ -32,7 +32,7 @@ def _extract(msg):
         name, file_name, unique, file_id, size, kind = d.file_name or "", d.file_name or "", d.file_unique_id, d.file_id, d.file_size or 0, "document"
     else:
         return None
-
+ 
     if not name:
         name = caption.split("\n")[0][:80] or "Unknown song"
     title = clean_title(name)
@@ -45,18 +45,18 @@ def _extract(msg):
         "file_id": file_id,
         "unique": unique,
     }
-
-
+ 
+ 
 def _source(msg):
-    """Song kis channel ke kaun se message mein hai (copy_message ke liye)."""
+    """Which channel and message the song lives in (for copy_message)."""
     if msg.chat.type == "channel":
         return msg.chat.id, msg.message_id
     origin = getattr(msg, "forward_origin", None)
     if origin is not None and getattr(origin, "type", "") == "channel":
         return origin.chat.id, origin.message_id
     return None, None
-
-
+ 
+ 
 def _build_doc(msg):
     info = _extract(msg)
     if not info:
@@ -73,14 +73,14 @@ def _build_doc(msg):
         "src_chat": src_chat,
         "src_msg": src_msg,
     }
-
-
+ 
+ 
 def _channel_allowed(chat):
     if not CHANNELS:
         return True
     return chat.id in CHANNELS or (chat.username and f"@{chat.username}" in CHANNELS)
-
-
+ 
+ 
 async def channel_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.channel_post
     if not msg or not _channel_allowed(msg.chat):
@@ -93,10 +93,10 @@ async def channel_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("channel song %s: %s", "saved" if is_new else "duplicate", doc["name"])
     except Exception as e:
         logger.exception("channel save failed: %s", e)
-
-
+ 
+ 
 async def pm_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sirf ADMINS ke liye: PM mein bheja/forward kiya hua song save hota hai."""
+    """ADMINS only: songs sent or forwarded in PM get saved."""
     msg, user = update.effective_message, update.effective_user
     if not msg or not user or user.id not in ADMINS:
         return
@@ -107,10 +107,11 @@ async def pm_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_new = await asyncio.to_thread(db.save_song, doc)
     except Exception as e:
         logger.exception("pm save failed: %s", e)
-        await msg.reply_text(f"⚠️ Save nahi hua: {e}")
+        await msg.reply_text(f"⚠️ Not saved: {e}")
         return
-    # Bahut saare songs ek saath forward ho sakte hain, isliye text ki jagah reaction (spam nahi)
+    # Many songs can be forwarded at once, so react instead of replying with text (no spam)
     try:
         await msg.set_reaction("👍" if is_new else "👌")
     except Exception:
         pass
+ 
