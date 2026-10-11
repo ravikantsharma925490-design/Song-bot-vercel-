@@ -46,3 +46,7 @@ PLAY_NEEDS_MENTION = _flag("PLAY_NEEDS_MENTION", "1")
 ADD_BUTTON = _flag("ADD_BUTTON", "1")
  
  
+# Optional links for the /start buttons (already set below; you can override them in Vercel Environment Variables), e.g. https://t.me/yourchannel
+UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/cinemagyanupdates").strip()
+SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/+xfk1QS-y50RmOTc1").strip()
+ 
