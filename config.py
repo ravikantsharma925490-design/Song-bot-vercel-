@@ -45,10 +45,14 @@ PLAY_NEEDS_MENTION = _flag("PLAY_NEEDS_MENTION", "1")
 # "➕ Add me to a group" button under songs. 0 = off
 ADD_BUTTON = _flag("ADD_BUTTON", "1")
  
-
+ 
 # Optional links for the /start buttons (already set below; you can override them in Vercel Environment Variables), e.g. https://t.me/yourchannel
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/cinemagyanupdates").strip()
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/+xfk1QS-y50RmOTc1").strip()
-
+ 
 # Storage plan size in MB for /status (MongoDB Atlas free plan = 512)
 STORAGE_LIMIT_MB = int(os.environ.get("STORAGE_LIMIT_MB", "512"))
+ 
+# Photo shown on /start: a Telegram file_id (best) or an https image link. Empty = text only.
+START_PHOTO = os.environ.get("START_PHOTO", "").strip()
+ 
