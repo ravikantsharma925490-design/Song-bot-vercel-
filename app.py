@@ -5,6 +5,9 @@ from telegram import Update
  
 import database as db
 from main import build_application, _post_init
+from handlers.common import send_log
+from config import BOT_NAME, BOT_VERSION
+from utils import restart_text
  
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
  
@@ -53,5 +56,6 @@ async def setup(request: Request, key: str = ""):
         allowed_updates=Update.ALL_TYPES,
     )
     await _post_init(tg)
+    await send_log(tg.bot, restart_text(BOT_NAME, BOT_VERSION))  # "Bot Restarted" message in LOG_CHANNEL
     return {"webhook": url, "commands": "set"}
  
