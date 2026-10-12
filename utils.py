@@ -1,8 +1,10 @@
 """Small helper functions (they work without Telegram)."""
  
+import html
 import os
 import re
 import unicodedata
+from datetime import datetime, timedelta, timezone
  
 AUDIO_EXT = (".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma", ".amr")
  
@@ -137,5 +139,29 @@ def status_text(users, groups, files, used, limit, uptime, rss, total, cpu):
         f"├⋟ ᴄᴘᴜ ⋟ {cpu_s}\n"
         "│\n"
         "╰─────────────────────⍟"
+    )
+ 
+ 
+# ---------------- LOG_CHANNEL messages ----------------
+ 
+IST = timezone(timedelta(hours=5, minutes=30))  # Asia/Kolkata
+ 
+ 
+def restart_text(bot_name, version):
+    now = datetime.now(IST)
+    return (
+        f"<b>{html.escape(bot_name)} Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ !</b>\n\n"
+        f"📅 Dᴀᴛᴇ : <code>{now:%Y-%m-%d}</code>\n"
+        f"⏰ Tɪᴍᴇ : <code>{now:%I:%M:%S %p}</code>\n"
+        "🌐 Tɪᴍᴇᴢᴏɴᴇ : <code>Asia/Kolkata</code>\n"
+        f"🛠️ Bᴜɪʟᴅ Sᴛᴀᴛᴜs: <code>{html.escape(version)} [ Sᴛᴀʙʟᴇ ]</code>"
+    )
+ 
+ 
+def new_user_text(user_id, name):
+    return (
+        "#NewUser\n\n"
+        f"Iᴅ - <code>{user_id}</code>\n"
+        f"Nᴀᴍᴇ - {html.escape(name or 'Unknown')}"
     )
  
