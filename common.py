@@ -105,8 +105,8 @@ async def fsub_gate(bot, user_id, retry_data):
         InlineKeyboardMarkup(rows),
     )
  
-
-
+ 
+ 
 async def send_log(bot, text):
     """Posts a message to LOG_CHANNEL (does nothing if it isn't set; never raises)."""
     if not LOG_CHANNEL:
@@ -115,8 +115,8 @@ async def send_log(bot, text):
         await bot.send_message(LOG_CHANNEL, text, parse_mode="HTML", disable_web_page_preview=True)
     except Exception as e:
         logger.warning("LOG_CHANNEL message failed: %s", e)
-
-
+ 
+ 
 async def send_activity(bot, text):
     """Posts a message to ACTIVITY_LOG_CHANNEL (does nothing if it isn't set; never raises)."""
     if not ACTIVITY_LOG_CHANNEL:
@@ -125,3 +125,4 @@ async def send_activity(bot, text):
         await bot.send_message(ACTIVITY_LOG_CHANNEL, text, parse_mode="HTML", disable_web_page_preview=True)
     except Exception as e:
         logger.warning("ACTIVITY_LOG_CHANNEL message failed: %s", e)
+ 
