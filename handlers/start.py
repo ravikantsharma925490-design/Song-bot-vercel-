@@ -34,9 +34,9 @@ def _start_photo():
 WELCOME = (
     "👋 Hello {name}! Welcome to MyTunes Bot 🎧\n\n"
     "I can find any song for you and send it directly as an MP3 file.\n\n"
-    "📌 Use the command below to download:\n"
-    "👉 /download [Song name or Link]\n\n"
-    "(Example: /download Tu Hai Kahan)\n\n"
+    "📌 Use the command below to play a song:\n"
+    "👉 /play [Song name]\n\n"
+    "(Example: /play Tu Hai Kahan)\n\n"
     "If you face any problem, type /help!"
 )
  
