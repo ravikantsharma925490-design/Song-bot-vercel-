@@ -10,9 +10,9 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
  
 import database as db
-from config import PAGE_SIZE, GROUP_SEARCH, PLAY_NEEDS_MENTION
-from utils import normalize, human_size, clip, pick_best, play_query
-from handlers.common import send_song, fsub_gate
+from config import PAGE_SIZE, GROUP_SEARCH, PLAY_NEEDS_MENTION, ACTIVITY_LOG_CHANNEL
+from utils import normalize, human_size, clip, pick_best, play_query, activity_text
+from handlers.common import send_song, fsub_gate, send_activity
  
 logger = logging.getLogger(__name__)
  
@@ -38,6 +38,14 @@ def _build_results(items, total, qid, page, query_text, in_group):
     if in_group:
         text += "\n\n👇 Tap a song and it will be sent right here in the group."
     return text, InlineKeyboardMarkup(rows)
+ 
+ 
+async def _request_markup(text, user_id):
+    """'Request this song' button for not-found replies (only if ACTIVITY_LOG_CHANNEL is set)."""
+    if not ACTIVITY_LOG_CHANNEL:
+        return None
+    qid = await asyncio.to_thread(db.make_query, text, user_id)
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📩 Request this song", callback_data=f"r|{qid}")]])
  
  
 async def search_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,14 +75,21 @@ async def search_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
  
     await asyncio.to_thread(db.add_user, user.id)
     items, total = await asyncio.to_thread(db.search_songs, query, 0, PAGE_SIZE)
+    raw = clip(msg.text.strip(), 200)
+    chat_title = chat.title if is_group else None
     if not items:
         if not is_group:  # in groups, stay silent if nothing is found (no spam)
-            await msg.reply_text("😕 No songs found. Try different words or check the spelling.")
+            await msg.reply_text(
+                "😕 No songs found. Try different words or check the spelling.",
+                reply_markup=await _request_markup(raw, user.id),
+            )
+        await send_activity(context.bot, activity_text("❌ SONG NOT FOUND", user, raw, chat_title))
         return
  
     qid = await asyncio.to_thread(db.make_query, query, user.id)
     text, kb = _build_results(items, total, qid, 0, query, is_group)
     await msg.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+    await send_activity(context.bot, activity_text("🔎 SONG SEARCH", user, raw, chat_title))
  
  
 async def page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -135,6 +150,27 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
  
  
+async def request_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """'Request this song' button: sends the request to ACTIVITY_LOG_CHANNEL."""
+    q = update.callback_query
+    user = q.from_user
+    if await asyncio.to_thread(db.is_banned, user.id):
+        await q.answer("You can't use this bot.", show_alert=True)
+        return
+    doc = await asyncio.to_thread(db.get_query, q.data.split("|", 1)[1])
+    if not doc:
+        await q.answer("This request has expired. Please search again.", show_alert=True)
+        return
+    chat = q.message.chat
+    chat_title = chat.title if chat.type in ("group", "supergroup") else None
+    await send_activity(context.bot, activity_text("📩 SONG REQUEST", user, doc["q"], chat_title))
+    await q.answer("✅ Request sent! We'll try to add this song.", show_alert=True)
+    try:
+        await q.edit_message_reply_markup(reply_markup=None)  # remove the button so it can't be sent twice
+    except Exception:
+        pass
+ 
+ 
 async def noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
  
@@ -153,17 +189,22 @@ async def _play(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text):
     await asyncio.to_thread(db.add_user, user.id)
     items, _ = await asyncio.to_thread(db.search_songs, query_text, 0, 30)
     song = pick_best(items, query_text)
+    raw = clip(query_text.strip(), 200)
+    chat_title = chat.title if chat.type in ("group", "supergroup") else None
     if not song:
-        await msg.reply_text("😕 No songs found. Try different words or check the spelling.")
+        await msg.reply_text(
+            "😕 No songs found. Try different words or check the spelling.",
+            reply_markup=await _request_markup(raw, user.id),
+        )
+        await send_activity(context.bot, activity_text("❌ SONG NOT FOUND", user, raw, chat_title))
         return
  
     gate = await fsub_gate(context.bot, user.id, f"d|{song['_id']}")
     if gate:
         await msg.reply_text(gate[0], reply_markup=gate[1])
-        return
- 
-    if not await send_song(context.bot, chat.id, song, reply_to=msg.message_id):
+    elif not await send_song(context.bot, chat.id, song, reply_to=msg.message_id):
         await msg.reply_text("⚠️ Couldn't send the song. It may have been removed from the channel.")
+    await send_activity(context.bot, activity_text("🔎 SONG SEARCH", user, raw, chat_title))
  
  
 async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
