@@ -56,3 +56,8 @@ STORAGE_LIMIT_MB = int(os.environ.get("STORAGE_LIMIT_MB", "512"))
 # Photo shown on /start: a Telegram file_id (best) or an https image link. Empty = text only.
 START_PHOTO = os.environ.get("START_PHOTO", "").strip()
  
+# Private channel where the bot posts "restarted" and "#NewUser" messages (ID like -1001234567890 or @username). Empty = off.
+LOG_CHANNEL = (_ids(os.environ.get("LOG_CHANNEL", "")) or [None])[0]
+BOT_NAME = os.environ.get("BOT_NAME", "MyTunes Bot 🎶")
+BOT_VERSION = os.environ.get("BOT_VERSION", "v1.0")
+ 
