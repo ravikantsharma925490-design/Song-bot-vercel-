@@ -76,11 +76,13 @@ def count_songs():
 # ---------------- Users ----------------
  
 def add_user(user_id):
-    _db.users.update_one(
+    """True = brand new user, False = already known."""
+    res = _db.users.update_one(
         {"user_id": user_id},
         {"$setOnInsert": {"user_id": user_id, "joined": datetime.utcnow(), "banned": False}},
         upsert=True,
     )
+    return res.upserted_id is not None
  
  
 def is_banned(user_id):
