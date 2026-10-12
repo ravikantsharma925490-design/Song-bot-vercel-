@@ -10,7 +10,8 @@ from telegram.ext import ContextTypes
  
 import database as db
 from config import ADMINS, UPDATES_URL, SUPPORT_URL, START_PHOTO
-from handlers.common import send_song, fsub_gate
+from utils import new_user_text
+from handlers.common import send_song, fsub_gate, send_log
  
 logger = logging.getLogger(__name__)
  
@@ -87,9 +88,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("🎶 Type a song name and I'll find it. For more help, send /start to me in private.")
         return
  
-    await asyncio.to_thread(db.add_user, user.id)
+    is_new = await asyncio.to_thread(db.add_user, user.id)
     if await asyncio.to_thread(db.is_banned, user.id):
         return
+    if is_new:
+        await send_log(context.bot, new_user_text(user.id, user.full_name))
  
     payload = context.args[0] if context.args else ""
     if payload.startswith("s_"):
