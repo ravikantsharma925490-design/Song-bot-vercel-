@@ -4,7 +4,7 @@ import logging
  
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
  
-from config import FSUB_CHANNELS, FSUB_LINKS, PROTECT_CONTENT, ADD_BUTTON, LOG_CHANNEL
+from config import FSUB_CHANNELS, FSUB_LINKS, PROTECT_CONTENT, ADD_BUTTON, LOG_CHANNEL, ACTIVITY_LOG_CHANNEL
  
 logger = logging.getLogger(__name__)
  
@@ -115,4 +115,14 @@ async def send_log(bot, text):
         await bot.send_message(LOG_CHANNEL, text, parse_mode="HTML", disable_web_page_preview=True)
     except Exception as e:
         logger.warning("LOG_CHANNEL message failed: %s", e)
+ 
+ 
+async def send_activity(bot, text):
+    """Posts a message to ACTIVITY_LOG_CHANNEL (does nothing if it isn't set; never raises)."""
+    if not ACTIVITY_LOG_CHANNEL:
+        return
+    try:
+        await bot.send_message(ACTIVITY_LOG_CHANNEL, text, parse_mode="HTML", disable_web_page_preview=True)
+    except Exception as e:
+        logger.warning("ACTIVITY_LOG_CHANNEL message failed: %s", e)
  
