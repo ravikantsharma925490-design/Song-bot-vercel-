@@ -46,10 +46,43 @@ def _cookie_file(workdir):
     return path
 
 
+class _Collect:
+    """Collects yt-dlp's own warnings/errors so the real reason shows up in LOG_CHANNEL."""
+
+    def __init__(self):
+        self.msgs = []
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg):
+        self.msgs.append(str(msg))
+
+    def error(self, msg):
+        self.msgs.append(str(msg))
+
+
+def cookie_diag():
+    """Safe summary of the YOUTUBE_COOKIES variable (names only, never the values)."""
+    text = (YOUTUBE_COOKIES or "").strip()
+    if not text:
+        return "YOUTUBE_COOKIES is EMPTY (variable missing, or the project was not redeployed after adding it)"
+    text = text.replace("\\n", "\n").replace("\\t", "\t")
+    lines = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
+    tabbed = sum(1 for l in lines if l.count("\t") >= 6)
+    names = {l.split("\t")[5] for l in lines if l.count("\t") >= 6}
+    keys = [k for k in ("SID", "__Secure-3PSID", "SAPISID", "LOGIN_INFO") if k in names]
+    return (f"cookies: {len(lines)} lines, {tabbed} in the correct tab-separated format, "
+            f"login cookies found: {', '.join(keys) or 'NONE'}")
+
+
 def _base_opts(cookie_file):
     opts = {
         "quiet": True,
-        "no_warnings": True,
+        "no_warnings": False,
         "noplaylist": True,
         "socket_timeout": 20,
         "retries": 2,
@@ -65,6 +98,7 @@ def yt_search(query, cookie_file):
     import yt_dlp
 
     opts = _base_opts(cookie_file)
+    opts["no_warnings"] = True
     opts["extract_flat"] = True
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"ytsearch5:{query}", download=False)
@@ -91,6 +125,8 @@ def yt_download(video_id, workdir, cookie_file):
     from yt_dlp.utils import match_filter_func
 
     opts = _base_opts(cookie_file)
+    collector = _Collect()
+    opts["logger"] = collector
     opts.update({
         # m4a plays in Telegram's music player; fall back to any audio if m4a isn't offered
         "format": "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio",
@@ -98,8 +134,12 @@ def yt_download(video_id, workdir, cookie_file):
         "max_filesize": MAX_BYTES,
         "match_filter": match_filter_func(f"duration <= {MAX_SECONDS} & !is_live"),
     })
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+    except Exception as e:
+        extra = " | yt-dlp said: " + " ; ".join(collector.msgs[-4:]) if collector.msgs else ""
+        raise RuntimeError(f"{e}{extra}") from e
     if not info:
         raise ValueError("TOO_BIG")
     files = [p for p in glob.glob(os.path.join(workdir, f"{video_id}.*")) if not p.endswith((".part", ".ytdl"))]
@@ -274,9 +314,9 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
             await _edit(status, f"😕 That video is too long or too large (limit: {YT_MAX_MINUTES} minutes / 50 MB).", fail_markup)
         elif "sign in" in low or "not a bot" in low or "cookies" in low:
             await _edit(status, "⚠️ YouTube is blocking downloads right now. Please try again later.", fail_markup)
-            await send_log(bot, "⚠️ <b>YouTube blocked a download</b>\nThe YOUTUBE_COOKIES may have expired - export fresh cookies "
-                                "from the bot's YouTube account and update the variable in Vercel.\n"
-                                f"<code>{html.escape(clip(err, 250))}</code>")
+            await send_log(bot, "⚠️ <b>YouTube blocked a download</b>\n"
+                                f"<b>{html.escape(cookie_diag())}</b>\n"
+                                f"<code>{html.escape(clip(err, 900))}</code>")
         else:
             await _edit(status, "⚠️ I couldn't download this song. Try different words.", fail_markup)
             await send_log(bot, f"⚠️ <b>YouTube download failed</b>\n<code>{html.escape(clip(err, 300))}</code>")
