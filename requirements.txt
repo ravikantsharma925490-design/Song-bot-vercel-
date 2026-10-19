@@ -1,4 +1,6 @@
 python-telegram-bot==21.6
 pymongo==4.9.2
 fastapi
-yt-dlp
+yt-dlp[default]
+nodejs-wheel-binaries>=22
+ 
