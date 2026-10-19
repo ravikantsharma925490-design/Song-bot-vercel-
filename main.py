@@ -12,6 +12,7 @@ from config import BOT_TOKEN, ADMINS
 from handlers.start import start_command, help_command, menu_callback, photo_id_handler
 from handlers.status import status_command, track_group, bot_membership
 from handlers.search import search_message, page_callback, download_callback, noop_callback, play_command, request_callback
+from handlers.youtube import youtube_callback
 from handlers.save import channel_save, pm_save
 from handlers.admin import (
     stats_command, delete_command, delete_callback, deleteall_command,
@@ -76,6 +77,7 @@ def build_application():
     app.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^x\|"))
     app.add_handler(CallbackQueryHandler(deleteall_callback, pattern=r"^xa\|"))
     app.add_handler(CallbackQueryHandler(request_callback, pattern=r"^r\|"))
+    app.add_handler(CallbackQueryHandler(youtube_callback, pattern=r"^y\|"))
     app.add_handler(CallbackQueryHandler(noop_callback, pattern=r"^noop$"))
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^(help|home)$"))
 

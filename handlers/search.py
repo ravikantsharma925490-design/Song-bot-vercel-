@@ -10,9 +10,10 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
  
 import database as db
-from config import PAGE_SIZE, GROUP_SEARCH, PLAY_NEEDS_MENTION, ACTIVITY_LOG_CHANNEL
+from config import PAGE_SIZE, GROUP_SEARCH, PLAY_NEEDS_MENTION, ACTIVITY_LOG_CHANNEL, YT_DOWNLOAD
 from utils import normalize, human_size, clip, pick_best, play_query, activity_text
 from handlers.common import send_song, fsub_gate, send_activity
+from handlers.youtube import youtube_flow
  
 logger = logging.getLogger(__name__)
  
@@ -40,14 +41,20 @@ def _build_results(items, total, qid, page, query_text, in_group):
     return text, InlineKeyboardMarkup(rows)
  
  
-async def _request_markup(text, user_id):
-    """'Request this song' button for not-found replies (only if ACTIVITY_LOG_CHANNEL is set)."""
-    if not ACTIVITY_LOG_CHANNEL:
+async def _request_markup(text, user_id, with_youtube=False):
+    """Buttons for not-found replies: '⬇️ Get it from YouTube' and/or '📩 Request this song' (None if there are none)."""
+    youtube = with_youtube and YT_DOWNLOAD
+    if not youtube and not ACTIVITY_LOG_CHANNEL:
         return None
     qid = await asyncio.to_thread(db.make_query, text, user_id)
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📩 Request this song", callback_data=f"r|{qid}")]])
- 
- 
+    rows = []
+    if youtube:
+        rows.append([InlineKeyboardButton("⬇️ Get it from YouTube", callback_data=f"y|{qid}")])
+    if ACTIVITY_LOG_CHANNEL:
+        rows.append([InlineKeyboardButton("📩 Request this song", callback_data=f"r|{qid}")])
+    return InlineKeyboardMarkup(rows)
+
+
 async def search_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, user, chat = update.effective_message, update.effective_user, update.effective_chat
     if not msg or not msg.text or not user or user.is_bot:
@@ -80,8 +87,9 @@ async def search_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not items:
         if not is_group:  # in groups, stay silent if nothing is found (no spam)
             await msg.reply_text(
-                "😕 No songs found. Try different words or check the spelling.",
-                reply_markup=await _request_markup(raw, user.id),
+                "😕 No songs found in my library. Try different words or check the spelling."
+                + ("\n\nOr tap below and I'll get it from YouTube 👇" if YT_DOWNLOAD else ""),
+                reply_markup=await _request_markup(raw, user.id, with_youtube=True),
             )
         await send_activity(context.bot, activity_text("❌ SONG NOT FOUND", user, raw, chat_title))
         return
@@ -192,11 +200,23 @@ async def _play(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text):
     raw = clip(query_text.strip(), 200)
     chat_title = chat.title if chat.type in ("group", "supergroup") else None
     if not song:
-        await msg.reply_text(
-            "😕 No songs found. Try different words or check the spelling.",
-            reply_markup=await _request_markup(raw, user.id),
-        )
         await send_activity(context.bot, activity_text("❌ SONG NOT FOUND", user, raw, chat_title))
+        if not YT_DOWNLOAD:
+            await msg.reply_text(
+                "😕 No songs found. Try different words or check the spelling.",
+                reply_markup=await _request_markup(raw, user.id),
+            )
+            return
+        # Not in the database -> get it from YouTube
+        qid = await asyncio.to_thread(db.make_query, raw, user.id)
+        gate = await fsub_gate(context.bot, user.id, f"y|{qid}")
+        if gate:
+            await msg.reply_text(gate[0], reply_markup=gate[1])
+            return
+        await youtube_flow(
+            context.bot, chat.id, user, raw, msg.message_id, update.update_id,
+            chat_title=chat_title, fail_markup=await _request_markup(raw, user.id),
+        )
         return
  
     gate = await fsub_gate(context.bot, user.id, f"d|{song['_id']}")

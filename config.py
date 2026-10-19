@@ -64,3 +64,14 @@ BOT_VERSION = os.environ.get("BOT_VERSION", "v1.0")
 # Channel for activity messages: song searches, "not found" searches and song requests. Empty = off.
 # (You can use the same ID as LOG_CHANNEL or a different channel.)
 ACTIVITY_LOG_CHANNEL = (_ids(os.environ.get("ACTIVITY_LOG_CHANNEL", "")) or [None])[0]
+
+# ---------------- YouTube download ----------------
+# 1 = if a song is not in the database, download it from YouTube, send it, then save it. 0 = off
+YT_DOWNLOAD = _flag("YT_DOWNLOAD", "1")
+# Cookies of a SEPARATE YouTube/Google account made only for this bot (Netscape cookies.txt text).
+# YouTube blocks cloud servers like Vercel without them. Paste the whole cookies.txt text into this variable.
+YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
+# Longest video the bot will download (minutes)
+YT_MAX_MINUTES = max(1, int(os.environ.get("YT_MAX_MINUTES", "10")))
+# Channel where downloaded songs are posted (default: the first channel in CHANNELS)
+YT_SAVE_CHANNEL = (_ids(os.environ.get("YT_SAVE_CHANNEL", "")) or CHANNELS or [None])[0]

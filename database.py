@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 
 from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 
 from config import MONGO_URI, MONGO_DB_NAME
 from utils import normalize
@@ -24,6 +25,8 @@ def init_db():
     _db = client[MONGO_DB_NAME]
     _db.queries.create_index("created", expireAfterSeconds=86400)
     _db.users.create_index("user_id", unique=True)
+    _db.locks.create_index("created", expireAfterSeconds=600)
+    _db.songs.create_index("yt_id", sparse=True)
 
 
 # ---------------- Songs ----------------
@@ -35,6 +38,32 @@ def save_song(doc):
     doc["added"] = datetime.utcnow()
     res = _db.songs.update_one({"_id": _id}, {"$setOnInsert": doc}, upsert=True)
     return res.upserted_id is not None
+
+
+def save_yt_song(doc):
+    """Saves a song that was downloaded from YouTube (remembers the YouTube video id)."""
+    doc = dict(doc)
+    _id = doc.pop("_id")
+    yt_id = doc.pop("yt_id")
+    doc["added"] = datetime.utcnow()
+    _db.songs.update_one({"_id": _id}, {"$setOnInsert": doc, "$set": {"yt_id": yt_id}}, upsert=True)
+
+
+def get_song_by_yt(video_id):
+    return _db.songs.find_one({"yt_id": video_id})
+
+
+def claim(key):
+    """Takes a short-lived lock (auto-expires after 10 minutes). False = someone already holds it."""
+    try:
+        _db.locks.insert_one({"_id": key, "created": datetime.utcnow()})
+        return True
+    except DuplicateKeyError:
+        return False
+
+
+def release(key):
+    _db.locks.delete_one({"_id": key})
 
 
 def search_songs(query, page, page_size):
