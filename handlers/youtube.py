@@ -5,8 +5,9 @@ When a song is not in the database the bot:
   2) sends it to the user FIRST,
   3) then posts it to the songs channel and saves it in the database (so next time it comes from the database).
 """
-
+ 
 import asyncio
+import functools
 import glob
 import html
 import logging
@@ -14,26 +15,26 @@ import os
 import re
 import shutil
 import tempfile
-
+ 
 import database as db
 from config import (
     YOUTUBE_COOKIES, YT_MAX_MINUTES, YT_SAVE_CHANNEL, PROTECT_CONTENT,
 )
 from handlers.common import add_to_group_markup, fsub_gate, send_activity, send_log, send_song
 from utils import normalize, clip, clean_title, activity_text
-
+ 
 logger = logging.getLogger(__name__)
-
+ 
 MAX_BYTES = 49 * 1024 * 1024          # Telegram bots can upload up to 50 MB
 MAX_SECONDS = YT_MAX_MINUTES * 60
 SEARCH_TIMEOUT = 30                   # seconds
 DOWNLOAD_TIMEOUT = 170                # seconds (Vercel allows up to 300 in total)
-
+ 
 _URL_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?(?:\S*&)?v=|shorts/|embed/|live/))([\w-]{11})")
-
-
+ 
+ 
 # ---------------- yt-dlp (blocking code, always run in a thread) ----------------
-
+ 
 def _clean_cookie_lines(text):
     """Rebuilds a clean Netscape cookie list from whatever was pasted:
     fixes the header line, line endings, and tabs that turned into spaces. Returns a list of cookie lines."""
@@ -49,8 +50,8 @@ def _clean_cookie_lines(text):
         if len(parts) >= 7:
             out.append("\t".join(parts[:6] + ["\t".join(parts[6:])]))
     return out
-
-
+ 
+ 
 def _cookie_file(workdir):
     """Writes the cookies from the YOUTUBE_COOKIES env variable to a temp file. None if not set."""
     lines = _clean_cookie_lines(YOUTUBE_COOKIES)
@@ -60,38 +61,64 @@ def _cookie_file(workdir):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write("# Netscape HTTP Cookie File\n" + "\n".join(lines) + "\n")
     return path
-
-
+ 
+ 
 class _Collect:
     """Collects yt-dlp's own warnings/errors so the real reason shows up in LOG_CHANNEL."""
-
+ 
     def __init__(self):
         self.msgs = []
-
+ 
     def debug(self, msg):
         pass
-
+ 
     def info(self, msg):
         pass
-
+ 
     def warning(self, msg):
         self.msgs.append(str(msg))
-
+ 
     def error(self, msg):
         self.msgs.append(str(msg))
-
-
+ 
+ 
 def cookie_diag():
     """Safe summary of the YOUTUBE_COOKIES variable (names only, never the values)."""
     text = (YOUTUBE_COOKIES or "").strip()
     if not text:
-        return "YOUTUBE_COOKIES is EMPTY (variable missing, or the project was not redeployed after adding it)"
+        return ("YOUTUBE_COOKIES is EMPTY (variable missing, or the project was not redeployed after adding it); "
+                f"JS runtime (node): {'found' if _node_path() else 'MISSING'}")
     lines = _clean_cookie_lines(text)
     names = {l.split("\t")[5] for l in lines}
     keys = [k for k in ("SID", "__Secure-3PSID", "SAPISID", "LOGIN_INFO") if k in names]
-    return (f"cookies: {len(lines)} usable lines, login cookies found: {', '.join(keys) or 'NONE'}")
-
-
+    node = "found" if _node_path() else "MISSING"
+    return (f"cookies: {len(lines)} usable lines, login cookies found: {', '.join(keys) or 'NONE'}; JS runtime (node): {node}")
+ 
+ 
+@functools.lru_cache(maxsize=1)
+def _node_path():
+    """Path of a Node.js binary (installed through the nodejs-wheel-binaries package), or None.
+    yt-dlp needs a JavaScript runtime to talk to YouTube; Vercel has none by default."""
+    try:
+        import nodejs_wheel
+        src = os.path.join(os.path.dirname(nodejs_wheel.__file__), "bin", "node")
+    except Exception:
+        return None
+    if not os.path.exists(src):
+        return None
+    if os.access(src, os.X_OK):
+        return src
+    try:  # the package folder is read-only: copy to /tmp and make it executable
+        dst = "/tmp/node"
+        if not os.path.exists(dst):
+            shutil.copy(src, dst)
+            os.chmod(dst, 0o755)
+        return dst
+    except Exception as e:
+        logger.warning("could not prepare node: %s", e)
+        return None
+ 
+ 
 def _base_opts(cookie_file):
     opts = {
         "quiet": True,
@@ -103,13 +130,16 @@ def _base_opts(cookie_file):
     }
     if cookie_file:
         opts["cookiefile"] = cookie_file
+    node = _node_path()
+    if node:
+        opts["js_runtimes"] = {"node": {"path": node}}
     return opts
-
-
+ 
+ 
 def yt_search(query, cookie_file):
     """Returns the first usable result {id, title, uploader, duration} or None."""
     import yt_dlp
-
+ 
     opts = _base_opts(cookie_file)
     opts["no_warnings"] = True
     opts["extract_flat"] = True
@@ -130,13 +160,13 @@ def yt_search(query, cookie_file):
             "duration": int(dur),
         }
     return None
-
-
+ 
+ 
 def yt_download(video_id, workdir, cookie_file):
     """Downloads the audio of one video into workdir. Returns (file_path, info)."""
     import yt_dlp
     from yt_dlp.utils import match_filter_func
-
+ 
     opts = _base_opts(cookie_file)
     collector = _Collect()
     opts["logger"] = collector
@@ -159,15 +189,15 @@ def yt_download(video_id, workdir, cookie_file):
     if not files:
         raise ValueError("TOO_BIG")
     return max(files, key=os.path.getsize), info
-
-
+ 
+ 
 # ---------------- helpers ----------------
-
+ 
 def _safe_name(title):
     name = re.sub(r'[\\/:*?"<>|]+', " ", title or "").strip()
     return re.sub(r"\s+", " ", name)[:80] or "song"
-
-
+ 
+ 
 async def _edit(msg, text, markup=None):
     if not msg:
         return
@@ -175,8 +205,8 @@ async def _edit(msg, text, markup=None):
         await msg.edit_text(text, reply_markup=markup)
     except Exception:
         pass
-
-
+ 
+ 
 async def _delete(msg):
     if not msg:
         return
@@ -184,8 +214,8 @@ async def _delete(msg):
         await msg.delete()
     except Exception:
         pass
-
-
+ 
+ 
 async def _save_to_channel(bot, sent, title, query, video_id, size):
     """Posts the song to the songs channel (if set) and saves it in the database."""
     obj = sent.audio or sent.document
@@ -193,7 +223,7 @@ async def _save_to_channel(bot, sent, title, query, video_id, size):
     is_audio = bool(sent.audio)
     src_chat = src_msg = None
     doc_id = f"yt_{video_id}"
-
+ 
     if YT_SAVE_CHANNEL:
         try:
             if is_audio:
@@ -208,7 +238,7 @@ async def _save_to_channel(bot, sent, title, query, video_id, size):
             await send_log(bot, f"⚠️ <b>Couldn't post a downloaded song to the songs channel</b>\n"
                                 f"<code>{html.escape(clip(str(e), 300))}</code>\n"
                                 "Make the bot an admin of that channel with permission to post.")
-
+ 
     doc = {
         "_id": doc_id,
         "name": clean_title(title),
@@ -221,16 +251,16 @@ async def _save_to_channel(bot, sent, title, query, video_id, size):
         "yt_id": video_id,
     }
     await asyncio.to_thread(db.save_yt_song, doc)
-
-
+ 
+ 
 # ---------------- the main flow ----------------
-
+ 
 async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_title=None, fail_markup=None):
     """Not in the database -> YouTube -> send to the user -> post to the channel + save in the database."""
     query = (query or "").strip()
     if not query:
         return
-
+ 
     # Telegram re-sends an update if the webhook is slow - never run the same update twice
     if not await asyncio.to_thread(db.claim, f"u{update_id}"):
         return
@@ -241,17 +271,17 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
             reply_to_message_id=reply_to, allow_sending_without_reply=True,
         )
         return
-
+ 
     workdir = tempfile.mkdtemp(prefix="yt_")
     status = None
     video_lock = None
     try:
         status = await bot.send_message(
-         chat_id, "🔎 Not in my library. Searching YouTube… (v3)",
+            chat_id, "🔎 Not in my library. Searching YouTube…",
             reply_to_message_id=reply_to, allow_sending_without_reply=True,
         )
         cookie = _cookie_file(workdir)
-
+ 
         # 1) find the video
         m = _URL_RE.search(query)
         if m:
@@ -262,19 +292,19 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
             await _edit(status, "😕 I couldn't find a suitable song on YouTube. Try different words.", fail_markup)
             return
         video_id = result["id"]
-
+ 
         # 2) already downloaded before? send it from the database
         existing = await asyncio.to_thread(db.get_song_by_yt, video_id)
         if existing and await send_song(bot, chat_id, existing, reply_to=reply_to):
             await _delete(status)
             return
-
+ 
         # 3) only one download per video at a time
         if not await asyncio.to_thread(db.claim, f"yt{video_id}"):
             await _edit(status, "⏳ Someone just asked for this song. Please try again in a few seconds.")
             return
         video_lock = f"yt{video_id}"
-
+ 
         # 4) download
         shown = clip(result["title"], 60) if result["title"] else "your song"
         await _edit(status, f"⬇️ Downloading: {shown}")
@@ -284,13 +314,13 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
         size = os.path.getsize(path)
         if size > MAX_BYTES:
             raise ValueError("TOO_BIG")
-
+ 
         title = info.get("title") or result["title"] or "Unknown song"
         performer = re.sub(r"\s*-\s*Topic$", "", info.get("channel") or info.get("uploader") or result["uploader"] or "")
         duration = int(info.get("duration") or 0) or None
         ext = os.path.splitext(path)[1].lower()
         fname = f"{_safe_name(title)}{ext}"
-
+ 
         # 5) send to the user FIRST
         await _edit(status, "📤 Sending…")
         common = dict(
@@ -308,14 +338,14 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
                 sent = await bot.send_document(chat_id, fh, filename=fname, **common)
         await _delete(status)
         status = None
-
+ 
         # 6) then the channel + database (the user already has the song, so this can't delay them)
         try:
             await _save_to_channel(bot, sent, title, "" if m else query, video_id, size)
         except Exception as e:
             logger.exception("saving the downloaded song failed: %s", e)
         await send_activity(bot, activity_text("🎬 YOUTUBE DOWNLOAD", user, query, chat_title))
-
+ 
     except asyncio.TimeoutError:
         await _edit(status, "⌛ This took too long. Please try again.", fail_markup)
         await send_log(bot, "⚠️ <b>YouTube download timed out</b>")
@@ -338,8 +368,8 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
             await asyncio.to_thread(db.release, video_lock)
         await asyncio.to_thread(db.release, f"user{user.id}")
         shutil.rmtree(workdir, ignore_errors=True)
-
-
+ 
+ 
 async def youtube_callback(update, context):
     """'⬇️ Get it from YouTube' button (and 'try again' after force-subscribe)."""
     q = update.callback_query
@@ -365,3 +395,4 @@ async def youtube_callback(update, context):
         context.bot, chat.id, user, doc["q"], q.message.message_id, update.update_id,
         chat_title=chat.title if chat.type in ("group", "supergroup") else None,
     )
+ 
