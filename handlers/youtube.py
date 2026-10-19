@@ -247,7 +247,7 @@ async def youtube_flow(bot, chat_id, user, query, reply_to, update_id, chat_titl
     video_lock = None
     try:
         status = await bot.send_message(
-            chat_id, "🔎 Not in my library. Searching YouTube…",
+         chat_id, "🔎 Not in my library. Searching YouTube… (v3)",
             reply_to_message_id=reply_to, allow_sending_without_reply=True,
         )
         cookie = _cookie_file(workdir)
