@@ -5,20 +5,21 @@ Database — MongoDB. Collections:
   chats   : groups the bot is in (for /status)
   queries : temporary search record (for pagination, auto-deleted after 24 hours)
 """
-
+ 
 import re
+import time
 import uuid
 from datetime import datetime
-
-from pymongo import MongoClient
+ 
+from pymongo import MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
-
+ 
 from config import MONGO_URI, MONGO_DB_NAME
 from utils import normalize
-
+ 
 _db = None
-
-
+ 
+ 
 def init_db():
     global _db
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=8000)
@@ -27,10 +28,10 @@ def init_db():
     _db.users.create_index("user_id", unique=True)
     _db.locks.create_index("created", expireAfterSeconds=600)
     _db.songs.create_index("yt_id", sparse=True)
-
-
+ 
+ 
 # ---------------- Songs ----------------
-
+ 
 def save_song(doc):
     """True = new song saved, False = already existed."""
     doc = dict(doc)
@@ -38,8 +39,8 @@ def save_song(doc):
     doc["added"] = datetime.utcnow()
     res = _db.songs.update_one({"_id": _id}, {"$setOnInsert": doc}, upsert=True)
     return res.upserted_id is not None
-
-
+ 
+ 
 def save_yt_song(doc):
     """Saves a song that was downloaded from YouTube (remembers the YouTube video id)."""
     doc = dict(doc)
@@ -47,12 +48,12 @@ def save_yt_song(doc):
     yt_id = doc.pop("yt_id")
     doc["added"] = datetime.utcnow()
     _db.songs.update_one({"_id": _id}, {"$setOnInsert": doc, "$set": {"yt_id": yt_id}}, upsert=True)
-
-
+ 
+ 
 def get_song_by_yt(video_id):
     return _db.songs.find_one({"yt_id": video_id})
-
-
+ 
+ 
 def claim(key):
     """Takes a short-lived lock (auto-expires after 10 minutes). False = someone already holds it."""
     try:
@@ -60,12 +61,12 @@ def claim(key):
         return True
     except DuplicateKeyError:
         return False
-
-
+ 
+ 
 def release(key):
     _db.locks.delete_one({"_id": key})
-
-
+ 
+ 
 def search_songs(query, page, page_size):
     tokens = normalize(query).split()[:6]
     if not tokens:
@@ -76,34 +77,34 @@ def search_songs(query, page, page_size):
         _db.songs.find(flt).sort("name", 1).skip(page * page_size).limit(page_size)
     )
     return items, total
-
-
+ 
+ 
 def get_song(song_id):
     return _db.songs.find_one({"_id": song_id})
-
-
+ 
+ 
 def delete_song(song_id):
     return _db.songs.delete_one({"_id": song_id}).deleted_count
-
-
+ 
+ 
 def delete_all_songs():
     return _db.songs.delete_many({}).deleted_count
-
-
+ 
+ 
 def find_for_delete(query, limit=10):
     tokens = normalize(query).split()[:6]
     if not tokens:
         return []
     flt = {"$and": [{"search": {"$regex": re.escape(t)}} for t in tokens]}
     return list(_db.songs.find(flt).limit(limit))
-
-
+ 
+ 
 def count_songs():
     return _db.songs.count_documents({})
-
-
+ 
+ 
 # ---------------- Users ----------------
-
+ 
 def add_user(user_id):
     """True = brand new user, False = already known."""
     res = _db.users.update_one(
@@ -112,56 +113,56 @@ def add_user(user_id):
         upsert=True,
     )
     return res.upserted_id is not None
-
-
+ 
+ 
 def is_banned(user_id):
     return _db.users.find_one({"user_id": user_id, "banned": True}, {"_id": 1}) is not None
-
-
+ 
+ 
 def set_ban(user_id, banned):
     _db.users.update_one(
         {"user_id": user_id},
         {"$set": {"banned": banned}, "$setOnInsert": {"user_id": user_id, "joined": datetime.utcnow()}},
         upsert=True,
     )
-
-
+ 
+ 
 def count_users():
     return _db.users.count_documents({})
-
-
+ 
+ 
 # ---------------- Search queries (pagination) ----------------
-
+ 
 def make_query(text, user_id):
     qid = uuid.uuid4().hex[:10]
     _db.queries.insert_one(
         {"_id": qid, "q": text, "user_id": user_id, "created": datetime.utcnow()}
     )
     return qid
-
-
+ 
+ 
 def get_query(qid):
     return _db.queries.find_one({"_id": qid})
-
-
+ 
+ 
 # ---------------- Groups (for /status) ----------------
-
+ 
 def track_chat(chat_id, title=""):
     _db.chats.update_one(
         {"_id": chat_id},
         {"$set": {"title": title or ""}, "$setOnInsert": {"added": datetime.utcnow()}},
         upsert=True,
     )
-
-
+ 
+ 
 def remove_chat(chat_id):
     _db.chats.delete_one({"_id": chat_id})
-
-
+ 
+ 
 def count_groups():
     return _db.chats.count_documents({})
-
-
+ 
+ 
 def storage_used():
     """Bytes used by the database (data + indexes), or None if it can't be read."""
     try:
@@ -169,3 +170,46 @@ def storage_used():
         return int(st.get("storageSize", 0) + st.get("indexSize", 0))
     except Exception:
         return None
+ 
+ 
+# ---------------- Broadcast (/broadcast, owner only) ----------------
+ 
+def list_user_ids():
+    """Saare users jinhe bhej sakte hain (banned users nahi)."""
+    return [d["user_id"] for d in _db.users.find({"banned": {"$ne": True}}, {"user_id": 1})]
+ 
+ 
+def remove_user(user_id):
+    """Jis user ne bot block kiya, use list se hata do (banned user ka record nahi hatta)."""
+    _db.users.delete_one({"user_id": user_id, "banned": {"$ne": True}})
+ 
+ 
+def list_group_ids():
+    return [d["_id"] for d in _db.chats.find({}, {"_id": 1})]
+ 
+ 
+def save_broadcast_job(job):
+    _db.broadcast_job.replace_one({"_id": "current"}, job, upsert=True)
+ 
+ 
+def update_broadcast_job(**fields):
+    _db.broadcast_job.update_one({"_id": "current"}, {"$set": fields})
+ 
+ 
+def delete_broadcast_job():
+    _db.broadcast_job.delete_one({"_id": "current"})
+ 
+ 
+def claim_broadcast_job(statuses, lock_seconds):
+    """Job ko atomically 'running' + lock karta hai (double-tap par do baar nahi chalega). None = nahi mila/locked."""
+    now = time.time()
+    return _db.broadcast_job.find_one_and_update(
+        {
+            "_id": "current",
+            "status": {"$in": statuses},
+            "$or": [{"locked_until": {"$exists": False}}, {"locked_until": {"$lt": now}}],
+        },
+        {"$set": {"status": "running", "locked_until": now + lock_seconds}},
+        return_document=ReturnDocument.AFTER,
+    )
+ 
