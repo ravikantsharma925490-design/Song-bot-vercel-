@@ -45,26 +45,26 @@ PLAY_NEEDS_MENTION = _flag("PLAY_NEEDS_MENTION", "1")
 # "➕ Add me to a group" button under songs. 0 = off
 ADD_BUTTON = _flag("ADD_BUTTON", "1")
  
-
+ 
 # Optional links for the /start buttons (already set below; you can override them in Vercel Environment Variables), e.g. https://t.me/yourchannel
 UPDATES_URL = os.environ.get("UPDATES_URL", "https://t.me/cinemagyanupdates").strip()
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "https://t.me/+xfk1QS-y50RmOTc1").strip()
-
+ 
 # Storage plan size in MB for /status (MongoDB Atlas free plan = 512)
 STORAGE_LIMIT_MB = int(os.environ.get("STORAGE_LIMIT_MB", "512"))
-
+ 
 # Photo shown on /start: a Telegram file_id (best) or an https image link. Empty = text only.
 START_PHOTO = os.environ.get("START_PHOTO", "").strip()
-
+ 
 # Private channel where the bot posts "restarted" and "#NewUser" messages (ID like -1001234567890 or @username). Empty = off.
 LOG_CHANNEL = (_ids(os.environ.get("LOG_CHANNEL", "")) or [None])[0]
 BOT_NAME = os.environ.get("BOT_NAME", "MyTunes Bot 🎶")
 BOT_VERSION = os.environ.get("BOT_VERSION", "v1.0")
-
+ 
 # Channel for activity messages: song searches, "not found" searches and song requests. Empty = off.
 # (You can use the same ID as LOG_CHANNEL or a different channel.)
 ACTIVITY_LOG_CHANNEL = (_ids(os.environ.get("ACTIVITY_LOG_CHANNEL", "")) or [None])[0]
-
+ 
 # ---------------- YouTube download ----------------
 # 1 = if a song is not in the database, download it from YouTube, send it, then save it. 0 = off
 YT_DOWNLOAD = _flag("YT_DOWNLOAD", "1")
@@ -75,3 +75,9 @@ YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
 YT_MAX_MINUTES = max(1, int(os.environ.get("YT_MAX_MINUTES", "10")))
 # Channel where downloaded songs are posted (default: the first channel in CHANNELS)
 YT_SAVE_CHANNEL = (_ids(os.environ.get("YT_SAVE_CHANNEL", "")) or CHANNELS or [None])[0]
+ 
+# ---------------- /broadcast ----------------
+# Vercel par ek baar mein itne seconds tak hi bhejta hai, baaki bacha ho to "Continue" button aata hai.
+# (Lambe chalne wale host par bada number daal do to ek baar mein poora jayega.)
+BROADCAST_BATCH_SECONDS = float(os.environ.get("BROADCAST_BATCH_SECONDS", "7") or 7)
+ 
